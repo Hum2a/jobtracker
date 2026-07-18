@@ -1,0 +1,101 @@
+:root {
+  --navy: #305496;
+  --border: #d0d5dd;
+  --bg: #f7f8fa;
+  --applied: #c6efce; --applied-text: #006100;
+  --skipped: #d9d9d9; --skipped-text: #595959;
+  --queued: #ffeb9c; --queued-text: #9c6500;
+  --interviewing: #bdd7ee; --interviewing-text: #1f4e78;
+  --offer: #ffd966; --offer-text: #7f6000;
+  --rejected: #f4cccc; --rejected-text: #9c0006;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: #1a1a1a;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+h1 { font-size: 22px; margin: 0; color: var(--navy); }
+
+.summary { font-size: 13px; color: #555; }
+
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.controls input, .controls select, .controls button {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+}
+
+.controls input { flex: 1; min-width: 200px; }
+.controls button { cursor: pointer; background: var(--navy); color: white; border-color: var(--navy); }
+
+.table-wrap {
+  background: white;
+  border-radius: 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  max-height: 78vh;
+}
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+
+th {
+  position: sticky;
+  top: 0;
+  background: var(--navy);
+  color: white;
+  text-align: left;
+  padding: 10px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+th:hover { background: #24406f; }
+
+td {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+tr:hover td { background: #fafbfc; }
+
+td a { color: var(--navy); }
+
+select.status-select {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-Applied { background: var(--applied); color: var(--applied-text); }
+.status-Skipped { background: var(--skipped); color: var(--skipped-text); }
+.status-Queued { background: var(--queued); color: var(--queued-text); }
+.status-Interviewing { background: var(--interviewing); color: var(--interviewing-text); }
+.status-Offer { background: var(--offer); color: var(--offer-text); }
+.status-Rejected { background: var(--rejected); color: var(--rejected-text); }
