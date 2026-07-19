@@ -14,7 +14,7 @@
     "db:migrate": "node scripts/db.mjs migrate",
     "db:status": "node scripts/db.mjs status",
     "db:ping": "node scripts/db.mjs ping",
-    "r2:create": "wrangler r2 bucket create docket-docs && wrangler r2 bucket create docket-docs-preview",
+    "r2:create": "wrangler r2 bucket create docket-documents",
     "secrets:db": "wrangler secret put DATABASE_URL",
     "secrets:key": "wrangler secret put API_KEY",
     "secrets:resend": "wrangler secret put RESEND_API_KEY",

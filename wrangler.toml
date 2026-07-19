@@ -15,8 +15,8 @@ not_found_handling = "single-page-application"
 
 [[r2_buckets]]
 binding = "DOCS"
-bucket_name = "docket-docs"
-preview_bucket_name = "docket-docs-preview"
+bucket_name = "docket-documents"
+preview_bucket_name = "docket-documents"
 
 [triggers]
 crons = ["0 8 * * *"]

@@ -7,7 +7,7 @@ Personal single-owner job application tracker — Board, List, Detail, Stats, Se
 - **Frontend:** React + Vite + React Router + Recharts + `@dnd-kit`
 - **API:** Cloudflare Worker (Hono)
 - **DB:** Neon Postgres (`migrations/001_docket_schema.sql`)
-- **Files:** R2 bucket `docket-docs` (binding `DOCS`)
+- **Files:** R2 bucket `docket-documents` (binding `DOCS`)
 - **Auth:** No login. Writes require `X-Api-Key`. Reads are open.
 
 ## First-time setup
@@ -47,10 +47,7 @@ Personal single-owner job application tracker — Board, List, Detail, Stats, Se
    npx wrangler login
    ```
 
-5. **Create R2 buckets** (once)
-   ```bash
-   npm run r2:create
-   ```
+5. **R2 bucket** — uses existing `docket-documents` (create with `npm run r2:create` if missing).
 
 6. **Production secrets**
    ```bash
