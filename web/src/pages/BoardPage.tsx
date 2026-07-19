@@ -17,6 +17,7 @@ import type { Application, Status } from "@shared/schema";
 import { STATUSES } from "@shared/schema";
 import { api } from "../lib/api";
 import { Modal } from "../components/Modal";
+import { StatusSelect } from "../components/StatusSelect";
 
 const STATUS_LABEL: Record<Status, string> = {
   wishlist: "Wishlist",
@@ -28,10 +29,14 @@ const STATUS_LABEL: Record<Status, string> = {
 
 function Card({
   app,
+  busy,
   onDelete,
+  onStatusChange,
 }: {
   app: Application;
+  busy?: boolean;
   onDelete: (id: number) => void;
+  onStatusChange: (id: number, status: Status) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: String(app.id),
@@ -55,6 +60,12 @@ function Card({
       <p className="meta">{app.industry}</p>
       {app.salaryRange && <p className="meta">{app.salaryRange}</p>}
       {app.appliedDate && <p className="meta">Applied {app.appliedDate}</p>}
+      <StatusSelect
+        value={app.status}
+        disabled={busy}
+        stopDrag
+        onChange={(status) => onStatusChange(app.id, status)}
+      />
       <div className="card-actions">
         <div>
           {app.dueSoon && <span className="badge badge-due">Due</span>}
@@ -81,11 +92,15 @@ function Card({
 function Column({
   status,
   apps,
+  busyId,
   onDelete,
+  onStatusChange,
 }: {
   status: Status;
   apps: Application[];
+  busyId: number | null;
   onDelete: (id: number) => void;
+  onStatusChange: (id: number, status: Status) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -101,7 +116,15 @@ function Column({
       {apps.length === 0 ? (
         <div className="empty">No applications</div>
       ) : (
-        apps.map((a) => <Card key={a.id} app={a} onDelete={onDelete} />)
+        apps.map((a) => (
+          <Card
+            key={a.id}
+            app={a}
+            busy={busyId === a.id}
+            onDelete={onDelete}
+            onStatusChange={onStatusChange}
+          />
+        ))
       )}
     </section>
   );
@@ -113,6 +136,7 @@ export function BoardPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [form, setForm] = useState({
     company: "",
@@ -160,6 +184,23 @@ export function BoardPage() {
     } catch (e) {
       setApps(prev);
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function onStatusChange(id: number, status: Status) {
+    const app = apps.find((a) => a.id === id);
+    if (!app || app.status === status) return;
+
+    const prev = apps;
+    setBusyId(id);
+    setApps((list) => list.map((a) => (a.id === id ? { ...a, status } : a)));
+    try {
+      await api.updateApplication(id, { status });
+    } catch (err) {
+      setApps(prev);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -248,7 +289,14 @@ export function BoardPage() {
         >
           <div className="board stagger">
             {STATUSES.map((s) => (
-              <Column key={s} status={s} apps={byStatus[s]} onDelete={onDelete} />
+              <Column
+                key={s}
+                status={s}
+                apps={byStatus[s]}
+                busyId={busyId}
+                onDelete={onDelete}
+                onStatusChange={onStatusChange}
+              />
             ))}
           </div>
           <DragOverlay>

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Application, Document, DocumentType, Note, Reminder, Status } from "@shared/schema";
-import { STATUSES } from "@shared/schema";
 import { api } from "../lib/api";
+import { StatusSelect } from "../components/StatusSelect";
 
 export function DetailPage() {
   const { id } = useParams();
@@ -15,6 +15,7 @@ export function DetailPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [noteBody, setNoteBody] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -72,6 +73,23 @@ export function DetailPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveStatus(next: Status) {
+    if (!app || app.status === next) return;
+    const previous = app.status;
+    setApp({ ...app, status: next });
+    setStatusSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateApplication(app.id, { status: next });
+      setApp(updated);
+    } catch (err) {
+      setApp({ ...app, status: previous });
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStatusSaving(false);
     }
   }
 
@@ -233,16 +251,12 @@ export function DetailPage() {
             </div>
             <div className="field">
               <label>Status</label>
-              <select
+              <StatusSelect
                 value={app.status}
-                onChange={(e) => setApp({ ...app, status: e.target.value as Status })}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+                disabled={statusSaving}
+                onChange={saveStatus}
+              />
+              <span className="muted">Saves immediately when changed</span>
             </div>
             <div className="field">
               <label>Location</label>

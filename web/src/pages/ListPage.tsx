@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Application } from "@shared/schema";
+import type { Application, Status } from "@shared/schema";
 import { STATUSES } from "@shared/schema";
 import { api } from "../lib/api";
+import { StatusSelect } from "../components/StatusSelect";
 
 type SortKey =
   | "company"
@@ -27,6 +28,7 @@ export function ListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("updatedAt");
   const [sortDir, setSortDir] = useState<-1 | 1>(-1);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [statusBusyId, setStatusBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -102,6 +104,22 @@ export function ListPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setDeleting(null);
+    }
+  }
+
+  async function onStatusChange(id: number, next: Status) {
+    const app = apps.find((a) => a.id === id);
+    if (!app || app.status === next) return;
+    const prev = apps;
+    setStatusBusyId(id);
+    setApps((list) => list.map((a) => (a.id === id ? { ...a, status: next } : a)));
+    try {
+      await api.updateApplication(id, { status: next });
+    } catch (e) {
+      setApps(prev);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStatusBusyId(null);
     }
   }
 
@@ -187,7 +205,11 @@ export function ListPage() {
                   <td>{r.roleTitle}</td>
                   <td>{r.industry}</td>
                   <td>
-                    <span className={`status-chip ${r.status}`}>{r.status}</span>
+                    <StatusSelect
+                      value={r.status}
+                      disabled={statusBusyId === r.id}
+                      onChange={(next) => onStatusChange(r.id, next)}
+                    />
                   </td>
                   <td>{r.salaryRange ?? ""}</td>
                   <td>{r.location ?? ""}</td>
