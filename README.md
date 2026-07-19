@@ -109,10 +109,11 @@ npx wrangler dev
 | DELETE | `/api/documents/:id` | key |
 | GET | `/api/stats` | — |
 | POST | `/api/import` | key |
+| GET/PATCH | `/api/settings` | write: key |
 | POST | `/api/digest/run` | key |
 | POST | `/api/email/test` | key |
 
-When `RESEND_API_KEY` + `DIGEST_TO` are set, creating an application or changing its status sends a detailed email (bulk import does not). Daily cron (`0 8 * * *`) still runs the reminder digest.
+When `RESEND_API_KEY` is set and at least one recipient exists (Settings → Notify emails, or `DIGEST_TO` fallback), creating an application or changing its status sends a detailed email (bulk import does not). From address defaults to `Docket <Docket@Humza-Butt.space>`. Daily cron (`0 8 * * *`) still runs the reminder digest.
 
 ## Import JSON shape
 

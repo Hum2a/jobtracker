@@ -11,12 +11,25 @@ export function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [digestBusy, setDigestBusy] = useState(false);
   const [testEmailBusy, setTestEmailBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [notifyTo, setNotifyTo] = useState("");
+  const [fromAddress, setFromAddress] = useState("Docket <Docket@Humza-Butt.space>");
+  const [effectiveNotifyTo, setEffectiveNotifyTo] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setDocs(await api.listDocuments(null));
+      const [documentList, settings] = await Promise.all([
+        api.listDocuments(null),
+        api.getSettings(),
+      ]);
+      setDocs(documentList);
+      setNotifyTo(
+        settings.notifyTo || settings.effectiveNotifyTo.join(", ")
+      );
+      setEffectiveNotifyTo(settings.effectiveNotifyTo);
+      setFromAddress(settings.from);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -65,6 +78,28 @@ export function SettingsPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function onSaveNotify(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const settings = await api.updateSettings(notifyTo);
+      setNotifyTo(settings.notifyTo);
+      setEffectiveNotifyTo(settings.effectiveNotifyTo);
+      setFromAddress(settings.from);
+      setMessage(
+        settings.effectiveNotifyTo.length > 0
+          ? `Saved. Emails go to: ${settings.effectiveNotifyTo.join(", ")}`
+          : "Saved. No recipients yet — add at least one email."
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSettingsBusy(false);
     }
   }
 
@@ -191,11 +226,36 @@ export function SettingsPage() {
           <section className="panel section">
             <h2>Email</h2>
             <p className="muted">
-              Alerts on create + status change use the same Resend config as digests (
-              <code>RESEND_API_KEY</code>, <code>DIGEST_TO</code>, optional <code>DIGEST_FROM</code>
-              ). Daily cron still sends due-soon reminders.
+              Create + status alerts and the daily digest share these recipients. From address is{" "}
+              <strong>{fromAddress}</strong>.
             </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.75rem" }}>
+
+            <form onSubmit={onSaveNotify} style={{ marginTop: "0.75rem" }}>
+              <div className="field">
+                <label htmlFor="notifyTo">Notify emails</label>
+                <textarea
+                  id="notifyTo"
+                  value={notifyTo}
+                  onChange={(e) => setNotifyTo(e.target.value)}
+                  placeholder="you@example.com, other@example.com"
+                  style={{ minHeight: 72 }}
+                />
+                <span className="muted">
+                  Comma or newline separated. Active:{" "}
+                  {effectiveNotifyTo.length > 0 ? effectiveNotifyTo.join(", ") : "none"}
+                </span>
+              </div>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                style={{ marginTop: "0.6rem" }}
+                disabled={settingsBusy}
+              >
+                {settingsBusy ? "Saving…" : "Save recipients"}
+              </button>
+            </form>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1rem" }}>
               <button
                 type="button"
                 className="btn btn-primary"

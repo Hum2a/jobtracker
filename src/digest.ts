@@ -1,18 +1,21 @@
 import type { Sql } from "./db";
-import { listDueSoonReminders } from "./db";
-import { escapeHtml, sendResendEmail } from "./email";
+import { listDueSoonReminders, resolveNotifyRecipients } from "./db";
+import { DEFAULT_FROM, escapeHtml, sendResendEmail } from "./email";
 
 export async function runDigest(opts: {
   sql: Sql;
   resendApiKey?: string;
-  to?: string;
+  /** Fallback when Settings has no recipients */
+  digestToFallback?: string;
   from?: string;
 }): Promise<{ sent: boolean; reason?: string; count: number }> {
   if (!opts.resendApiKey) {
     return { sent: false, reason: "RESEND_API_KEY not configured", count: 0 };
   }
-  if (!opts.to) {
-    return { sent: false, reason: "DIGEST_TO not configured", count: 0 };
+
+  const to = await resolveNotifyRecipients(opts.sql, opts.digestToFallback);
+  if (to.length === 0) {
+    return { sent: false, reason: "No notify recipients configured (set in Settings)", count: 0 };
   }
 
   const items = await listDueSoonReminders(opts.sql);
@@ -52,8 +55,8 @@ export async function runDigest(opts: {
 
   const result = await sendResendEmail({
     apiKey: opts.resendApiKey,
-    to: opts.to,
-    from: opts.from,
+    to,
+    from: opts.from || DEFAULT_FROM,
     subject: `Docket: ${items.length} reminder(s) due soon`,
     html,
   });

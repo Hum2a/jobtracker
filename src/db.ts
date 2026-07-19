@@ -2,6 +2,7 @@ import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { Application, Note, Reminder, Document, Stats, Status } from "../shared/schema";
 import { isDueSoon } from "../shared/schema";
 import type { CreateApplication, UpdateApplication } from "../shared/schema";
+import { parseEmailList } from "./email";
 
 export type Sql = NeonQueryFunction<false, false>;
 
@@ -402,4 +403,32 @@ export async function getStats(sql: Sql): Promise<Stats> {
       .slice(-12),
     reminderHealth: { open, dueSoon, completed, overdue },
   };
+}
+
+export const SETTING_NOTIFY_TO = "notify_to";
+
+export async function getSetting(sql: Sql, key: string): Promise<string | null> {
+  const rows = (await sql`
+    SELECT value FROM app_settings WHERE key = ${key}
+  `) as { value: string }[];
+  return rows[0]?.value ?? null;
+}
+
+export async function setSetting(sql: Sql, key: string, value: string): Promise<void> {
+  await sql`
+    INSERT INTO app_settings (key, value, updated_at)
+    VALUES (${key}, ${value}, now())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+  `;
+}
+
+/** DB setting first, then DIGEST_TO env fallback. */
+export async function resolveNotifyRecipients(
+  sql: Sql,
+  digestToFallback?: string
+): Promise<string[]> {
+  const fromDb = await getSetting(sql, SETTING_NOTIFY_TO);
+  const list = parseEmailList(fromDb);
+  if (list.length > 0) return list;
+  return parseEmailList(digestToFallback);
 }

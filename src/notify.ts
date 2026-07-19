@@ -1,14 +1,16 @@
 import type { Application, Status } from "../shared/schema";
 import type { Env } from "./schema";
-import { escapeHtml, sendResendEmail, type SendResult } from "./email";
+import type { Sql } from "./db";
+import { resolveNotifyRecipients } from "./db";
+import { DEFAULT_FROM, escapeHtml, sendResendEmail, type SendResult } from "./email";
 
 const APP_ORIGIN = "https://jobtracker.humza-butt.space";
 
-function mailConfig(env: Env) {
+async function mailConfig(sql: Sql, env: Env) {
   return {
     apiKey: env.RESEND_API_KEY,
-    to: env.DIGEST_TO,
-    from: env.DIGEST_FROM,
+    to: await resolveNotifyRecipients(sql, env.DIGEST_TO),
+    from: env.DIGEST_FROM || DEFAULT_FROM,
   };
 }
 
@@ -65,6 +67,7 @@ function wrapEmail(title: string, subtitle: string, body: string): string {
 
 export async function notifyApplicationCreated(
   env: Env,
+  sql: Sql,
   app: Application
 ): Promise<SendResult> {
   const html = wrapEmail(
@@ -74,7 +77,7 @@ export async function notifyApplicationCreated(
   );
 
   return sendResendEmail({
-    ...mailConfig(env),
+    ...(await mailConfig(sql, env)),
     subject: `Docket: added ${app.company} · ${app.roleTitle}`,
     html,
   });
@@ -82,6 +85,7 @@ export async function notifyApplicationCreated(
 
 export async function notifyStatusChanged(
   env: Env,
+  sql: Sql,
   opts: { app: Application; previousStatus: Status }
 ): Promise<SendResult> {
   const { app, previousStatus } = opts;
@@ -93,14 +97,14 @@ export async function notifyStatusChanged(
   );
 
   return sendResendEmail({
-    ...mailConfig(env),
+    ...(await mailConfig(sql, env)),
     subject: `Docket: ${app.company} → ${app.status}`,
     html,
   });
 }
 
 /** Combined sample email for Settings test button. */
-export async function sendTestEventEmail(env: Env): Promise<SendResult> {
+export async function sendTestEventEmail(env: Env, sql: Sql): Promise<SendResult> {
   const sample: Application = {
     id: 0,
     company: "Acme Corp",
@@ -129,7 +133,7 @@ export async function sendTestEventEmail(env: Env): Promise<SendResult> {
   );
 
   return sendResendEmail({
-    ...mailConfig(env),
+    ...(await mailConfig(sql, env)),
     subject: "Docket: test email (create + status alerts)",
     html,
   });

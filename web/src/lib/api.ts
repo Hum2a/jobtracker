@@ -127,6 +127,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  getSettings: () =>
+    request<{ notifyTo: string; effectiveNotifyTo: string[]; from: string }>("/api/settings"),
+
+  updateSettings: (notifyTo: string) =>
+    request<{ notifyTo: string; effectiveNotifyTo: string[]; from: string }>("/api/settings", {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify({ notifyTo }),
+    }),
+
   runDigest: () =>
     request<{ sent: boolean; reason?: string; count: number }>("/api/digest/run", {
       method: "POST",

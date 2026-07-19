@@ -20,6 +20,10 @@ import {
   createDocument,
   deleteDocument,
   getStats,
+  getSetting,
+  setSetting,
+  SETTING_NOTIFY_TO,
+  resolveNotifyRecipients,
 } from "./db";
 import {
   createApplicationSchema,
@@ -37,6 +41,7 @@ import {
   notifyStatusChanged,
   sendTestEventEmail,
 } from "./notify";
+import { DEFAULT_FROM, parseEmailList } from "./email";
 
 type AppContext = { Bindings: Env };
 
@@ -123,7 +128,7 @@ app.post("/api/applications", requireApiKey, async (c) => {
 
   const sql = getSql(c.env.DATABASE_URL);
   const created = await createApplication(sql, parsed.data);
-  c.executionCtx.waitUntil(notifyApplicationCreated(c.env, created));
+  c.executionCtx.waitUntil(notifyApplicationCreated(c.env, sql, created));
   return c.json(created, 201);
 });
 
@@ -152,7 +157,7 @@ app.patch("/api/applications/:id", requireApiKey, async (c) => {
 
   if (parsed.data.status && parsed.data.status !== existing.status) {
     c.executionCtx.waitUntil(
-      notifyStatusChanged(c.env, { app: updated, previousStatus: existing.status })
+      notifyStatusChanged(c.env, sql, { app: updated, previousStatus: existing.status })
     );
   }
 
@@ -428,19 +433,62 @@ app.get("/api/stats", async (c) => {
   return c.json(await getStats(sql));
 });
 
+app.get("/api/settings", async (c) => {
+  const sql = getSql(c.env.DATABASE_URL);
+  const stored = await getSetting(sql, SETTING_NOTIFY_TO);
+  const recipients = await resolveNotifyRecipients(sql, c.env.DIGEST_TO);
+  return c.json({
+    notifyTo: stored ?? "",
+    effectiveNotifyTo: recipients,
+    from: c.env.DIGEST_FROM || DEFAULT_FROM,
+  });
+});
+
+app.patch("/api/settings", requireApiKey, async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be valid JSON" }, 400);
+  }
+
+  const notifyTo = (body as { notifyTo?: unknown }).notifyTo;
+  if (typeof notifyTo !== "string") {
+    return c.json({ error: "notifyTo string required" }, 400);
+  }
+
+  const emails = parseEmailList(notifyTo);
+  for (const email of emails) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return c.json({ error: `Invalid email: ${email}` }, 400);
+    }
+  }
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const normalized = emails.join(", ");
+  await setSetting(sql, SETTING_NOTIFY_TO, normalized);
+
+  return c.json({
+    notifyTo: normalized,
+    effectiveNotifyTo: emails.length > 0 ? emails : await resolveNotifyRecipients(sql, c.env.DIGEST_TO),
+    from: c.env.DIGEST_FROM || DEFAULT_FROM,
+  });
+});
+
 app.post("/api/digest/run", requireApiKey, async (c) => {
   const sql = getSql(c.env.DATABASE_URL);
   const result = await runDigest({
     sql,
     resendApiKey: c.env.RESEND_API_KEY,
-    to: c.env.DIGEST_TO,
-    from: c.env.DIGEST_FROM,
+    digestToFallback: c.env.DIGEST_TO,
+    from: c.env.DIGEST_FROM || DEFAULT_FROM,
   });
   return c.json(result);
 });
 
 app.post("/api/email/test", requireApiKey, async (c) => {
-  const result = await sendTestEventEmail(c.env);
+  const sql = getSql(c.env.DATABASE_URL);
+  const result = await sendTestEventEmail(c.env, sql);
   return c.json(result);
 });
 
@@ -455,8 +503,8 @@ export default {
         await runDigest({
           sql,
           resendApiKey: env.RESEND_API_KEY,
-          to: env.DIGEST_TO,
-          from: env.DIGEST_FROM,
+          digestToFallback: env.DIGEST_TO,
+          from: env.DIGEST_FROM || DEFAULT_FROM,
         });
       })()
     );
