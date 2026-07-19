@@ -32,6 +32,11 @@ import {
 } from "./schema";
 import { createDownloadToken, verifyDownloadToken } from "./signed-url";
 import { runDigest } from "./digest";
+import {
+  notifyApplicationCreated,
+  notifyStatusChanged,
+  sendTestEventEmail,
+} from "./notify";
 
 type AppContext = { Bindings: Env };
 
@@ -118,6 +123,7 @@ app.post("/api/applications", requireApiKey, async (c) => {
 
   const sql = getSql(c.env.DATABASE_URL);
   const created = await createApplication(sql, parsed.data);
+  c.executionCtx.waitUntil(notifyApplicationCreated(c.env, created));
   return c.json(created, 201);
 });
 
@@ -138,8 +144,18 @@ app.patch("/api/applications/:id", requireApiKey, async (c) => {
   }
 
   const sql = getSql(c.env.DATABASE_URL);
+  const existing = await getApplicationById(sql, id);
+  if (!existing) return c.json({ error: "not found" }, 404);
+
   const updated = await updateApplication(sql, id, parsed.data);
   if (!updated) return c.json({ error: "not found" }, 404);
+
+  if (parsed.data.status && parsed.data.status !== existing.status) {
+    c.executionCtx.waitUntil(
+      notifyStatusChanged(c.env, { app: updated, previousStatus: existing.status })
+    );
+  }
+
   return c.json(updated);
 });
 
@@ -420,6 +436,11 @@ app.post("/api/digest/run", requireApiKey, async (c) => {
     to: c.env.DIGEST_TO,
     from: c.env.DIGEST_FROM,
   });
+  return c.json(result);
+});
+
+app.post("/api/email/test", requireApiKey, async (c) => {
+  const result = await sendTestEventEmail(c.env);
   return c.json(result);
 });
 

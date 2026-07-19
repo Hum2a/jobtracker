@@ -1,5 +1,6 @@
 import type { Sql } from "./db";
 import { listDueSoonReminders } from "./db";
+import { escapeHtml, sendResendEmail } from "./email";
 
 export async function runDigest(opts: {
   sql: Sql;
@@ -19,7 +20,6 @@ export async function runDigest(opts: {
     return { sent: false, reason: "nothing due", count: 0 };
   }
 
-  const from = opts.from || "Docket <onboarding@resend.dev>";
   const rows = items
     .map(
       (r) =>
@@ -50,32 +50,13 @@ export async function runDigest(opts: {
     </div>
   `;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [opts.to],
-      subject: `Docket: ${items.length} reminder(s) due soon`,
-      html,
-    }),
+  const result = await sendResendEmail({
+    apiKey: opts.resendApiKey,
+    to: opts.to,
+    from: opts.from,
+    subject: `Docket: ${items.length} reminder(s) due soon`,
+    html,
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    return { sent: false, reason: `Resend error: ${text}`, count: items.length };
-  }
-
-  return { sent: true, count: items.length };
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return { ...result, count: items.length };
 }

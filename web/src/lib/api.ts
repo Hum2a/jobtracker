@@ -132,4 +132,10 @@ export const api = {
       method: "POST",
       auth: true,
     }),
+
+  sendTestEmail: () =>
+    request<{ sent: boolean; reason?: string }>("/api/email/test", {
+      method: "POST",
+      auth: true,
+    }),
 };

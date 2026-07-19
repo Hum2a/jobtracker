@@ -1,6 +1,6 @@
 # Docket
 
-Personal single-owner job application tracker — Board, List, Detail, Stats, Settings — served as a React SPA from a Cloudflare Worker (Hono) with Neon Postgres, R2 document storage, and optional Resend digests.
+Personal single-owner job application tracker — Board, List, Detail, Stats, Settings — served as a React SPA from a Cloudflare Worker (Hono) with Neon Postgres, R2 document storage, and optional Resend emails (create/status alerts + daily digests).
 
 ## Stack
 
@@ -53,10 +53,11 @@ Personal single-owner job application tracker — Board, List, Detail, Stats, Se
    ```bash
    npm run secrets:db          # DATABASE_URL
    npm run secrets:key         # API_KEY
-   npm run secrets:resend      # optional RESEND_API_KEY
-   npm run secrets:digest-to   # optional DIGEST_TO
-   npm run secrets:digest-from # optional DIGEST_FROM
+   npm run secrets:resend      # RESEND_API_KEY (event emails + digests)
+   npm run secrets:digest-to   # DIGEST_TO (your inbox)
+   npm run secrets:digest-from # DIGEST_FROM e.g. Docket <alerts@your-verified-domain>
    ```
+   After Resend is set, use **Settings → Send test email** to verify delivery.
 
 7. **Build & deploy**
    ```bash
@@ -109,8 +110,9 @@ npx wrangler dev
 | GET | `/api/stats` | — |
 | POST | `/api/import` | key |
 | POST | `/api/digest/run` | key |
+| POST | `/api/email/test` | key |
 
-Daily cron (`0 8 * * *`) runs the reminder digest when Resend + `DIGEST_TO` are set.
+When `RESEND_API_KEY` + `DIGEST_TO` are set, creating an application or changing its status sends a detailed email (bulk import does not). Daily cron (`0 8 * * *`) still runs the reminder digest.
 
 ## Import JSON shape
 

@@ -10,6 +10,7 @@ export function SettingsPage() {
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
   const [digestBusy, setDigestBusy] = useState(false);
+  const [testEmailBusy, setTestEmailBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -82,6 +83,24 @@ export function SettingsPage() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setDigestBusy(false);
+    }
+  }
+
+  async function onTestEmail() {
+    setTestEmailBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await api.sendTestEmail();
+      setMessage(
+        result.sent
+          ? "Test email sent. Check your inbox."
+          : `Test email skipped: ${result.reason ?? "unknown"}`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTestEmailBusy(false);
     }
   }
 
@@ -170,14 +189,25 @@ export function SettingsPage() {
           </section>
 
           <section className="panel section">
-            <h2>Reminder digest</h2>
+            <h2>Email</h2>
             <p className="muted">
-              Daily cron sends due-soon reminders when Resend is configured. Trigger manually to
-              test.
+              Alerts on create + status change use the same Resend config as digests (
+              <code>RESEND_API_KEY</code>, <code>DIGEST_TO</code>, optional <code>DIGEST_FROM</code>
+              ). Daily cron still sends due-soon reminders.
             </p>
-            <button type="button" className="btn" disabled={digestBusy} onClick={onDigest}>
-              {digestBusy ? "Running…" : "Run digest now"}
-            </button>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.75rem" }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={testEmailBusy}
+                onClick={onTestEmail}
+              >
+                {testEmailBusy ? "Sending…" : "Send test email"}
+              </button>
+              <button type="button" className="btn" disabled={digestBusy} onClick={onDigest}>
+                {digestBusy ? "Running…" : "Run digest now"}
+              </button>
+            </div>
           </section>
         </div>
       </div>
