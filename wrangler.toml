@@ -3,19 +3,27 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Custom domain (requires humza-butt.space to already be on Cloudflare, DNS proxied).
-# Comment this out for the first deploy if the domain isn't wired up yet;
-# Wrangler will otherwise fail trying to attach a route that doesn't exist.
 routes = [
   { pattern = "jobtracker.humza-butt.space", custom_domain = true }
 ]
 
-# Serves everything in public/ as static assets. Any request that doesn't
-# match a file falls through to the Worker (src/index.ts), which handles /api/*.
+# Built React SPA (npm run build:web → dist/)
 [assets]
-directory = "./public"
+directory = "./dist"
 binding = "ASSETS"
+not_found_handling = "single-page-application"
 
-# Secrets (set via `npm run secrets:db` / `npm run secrets:key`, not committed):
-#   DATABASE_URL  - Neon pooled connection string
-#   API_KEY       - static key required on write endpoints
+[[r2_buckets]]
+binding = "DOCS"
+bucket_name = "docket-docs"
+preview_bucket_name = "docket-docs-preview"
+
+[triggers]
+crons = ["0 8 * * *"]
+
+# Secrets (set via wrangler secret put, not committed):
+#   DATABASE_URL
+#   API_KEY
+#   RESEND_API_KEY (optional)
+#   DIGEST_TO (optional)
+#   DIGEST_FROM (optional)

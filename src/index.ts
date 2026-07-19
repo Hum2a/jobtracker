@@ -1,8 +1,37 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Context, Next } from "hono";
-import { getSql, listApplications, getApplicationById, insertApplications, updateApplication } from "./db";
-import type { Env, NewApplication, ApplicationUpdate } from "./schema";
+import {
+  getSql,
+  listApplications,
+  getApplicationById,
+  createApplication,
+  updateApplication,
+  deleteApplication,
+  listNotes,
+  createNote,
+  deleteNote,
+  listReminders,
+  createReminder,
+  setReminderCompleted,
+  deleteReminder,
+  listDocuments,
+  getDocumentById,
+  createDocument,
+  deleteDocument,
+  getStats,
+} from "./db";
+import {
+  createApplicationSchema,
+  updateApplicationSchema,
+  createNoteSchema,
+  createReminderSchema,
+  importPayloadSchema,
+  documentTypeSchema,
+  type Env,
+} from "./schema";
+import { createDownloadToken, verifyDownloadToken } from "./signed-url";
+import { runDigest } from "./digest";
 
 type AppContext = { Bindings: Env };
 
@@ -28,42 +57,52 @@ app.get("/api/health", async (c) => {
   }
 });
 
-// GET /api/applications?status=&category=&platform=&q=
+// ── Applications ──────────────────────────────────────────────
+
 app.get("/api/applications", async (c) => {
   const sql = getSql(c.env.DATABASE_URL);
-  const rows = await listApplications(sql);
+  let rows = await listApplications(sql);
 
   const status = c.req.query("status");
-  const category = c.req.query("category");
-  const platform = c.req.query("platform");
+  const industry = c.req.query("industry");
+  const position = c.req.query("position");
   const q = c.req.query("q")?.toLowerCase();
+  const from = c.req.query("from");
+  const to = c.req.query("to");
 
-  let filtered = rows;
-  if (status) filtered = filtered.filter((r) => r.status === status);
-  if (category) filtered = filtered.filter((r) => r.category === category);
-  if (platform) filtered = filtered.filter((r) => r.platform === platform);
+  if (status) rows = rows.filter((r) => r.status === status);
+  if (industry) rows = rows.filter((r) => r.industry === industry);
+  if (position) rows = rows.filter((r) => r.roleTitle === position);
+  if (from) rows = rows.filter((r) => (r.appliedDate ?? "") >= from);
+  if (to) rows = rows.filter((r) => (r.appliedDate ?? "") <= to);
   if (q) {
-    filtered = filtered.filter(
-      (r) => r.company?.toLowerCase().includes(q) || r.role?.toLowerCase().includes(q)
-    );
+    rows = rows.filter((r) => {
+      const hay = [
+        r.company,
+        r.roleTitle,
+        r.industry,
+        r.location ?? "",
+        r.source ?? "",
+        r.salaryRange ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
   }
 
-  return c.json(filtered);
+  return c.json(rows);
 });
 
 app.get("/api/applications/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
-
   const sql = getSql(c.env.DATABASE_URL);
   const row = await getApplicationById(sql, id);
   if (!row) return c.json({ error: "not found" }, 404);
   return c.json(row);
 });
 
-// POST /api/applications
-// Accepts: a single job object, an array of job objects, or { applications: [...] }.
-// Requires X-Api-Key. Duplicates (same platform + job_ref) are silently skipped.
 app.post("/api/applications", requireApiKey, async (c) => {
   let body: unknown;
   try {
@@ -72,46 +111,333 @@ app.post("/api/applications", requireApiKey, async (c) => {
     return c.json({ error: "body must be valid JSON" }, 400);
   }
 
-  let jobs: NewApplication[];
-  if (Array.isArray(body)) {
-    jobs = body as NewApplication[];
-  } else if (body && typeof body === "object" && Array.isArray((body as { applications?: unknown }).applications)) {
-    jobs = (body as { applications: NewApplication[] }).applications;
-  } else {
-    jobs = [body as NewApplication];
-  }
-
-  if (jobs.length === 0) return c.json({ error: "no jobs provided" }, 400);
-
-  for (const job of jobs) {
-    if (!job || !job.company || !job.role) {
-      return c.json({ error: "each job requires at least 'company' and 'role'" }, 400);
-    }
+  const parsed = createApplicationSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
   }
 
   const sql = getSql(c.env.DATABASE_URL);
-  const result = await insertApplications(sql, jobs);
-  return c.json({ inserted: result.insertedIds, skipped_duplicates: result.skipped }, 201);
+  const created = await createApplication(sql, parsed.data);
+  return c.json(created, 201);
 });
 
-// PATCH /api/applications/:id
-// Partial update. Requires X-Api-Key. If `status` changes, a status_history
-// row is appended automatically.
 app.patch("/api/applications/:id", requireApiKey, async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
 
-  let updates: unknown;
+  let body: unknown;
   try {
-    updates = await c.req.json();
+    body = await c.req.json();
   } catch {
     return c.json({ error: "body must be valid JSON" }, 400);
   }
 
+  const parsed = updateApplicationSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
   const sql = getSql(c.env.DATABASE_URL);
-  const updated = await updateApplication(sql, id, updates as ApplicationUpdate);
+  const updated = await updateApplication(sql, id, parsed.data);
   if (!updated) return c.json({ error: "not found" }, 404);
   return c.json(updated);
 });
 
-export default app;
+app.delete("/api/applications/:id", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const docs = await listDocuments(sql, id);
+  for (const doc of docs) {
+    try {
+      await c.env.DOCS.delete(doc.storageKey);
+    } catch {
+      /* best-effort */
+    }
+  }
+  const ok = await deleteApplication(sql, id);
+  if (!ok) return c.json({ error: "not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// ── Bulk import ───────────────────────────────────────────────
+
+app.post("/api/import", requireApiKey, async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be valid JSON" }, 400);
+  }
+
+  const parsed = importPayloadSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const ids: number[] = [];
+
+  for (const item of parsed.data.applications) {
+    const appRow = await createApplication(sql, {
+      company: item.company,
+      roleTitle: item.roleTitle,
+      industry: item.industry,
+      status: item.status,
+      location: item.location,
+      jobUrl: item.jobUrl,
+      appliedDate: item.appliedDate,
+      salaryRange: item.salaryRange,
+      source: item.source,
+    });
+    ids.push(appRow.id);
+
+    for (const note of item.notes ?? []) {
+      if (note.trim()) await createNote(sql, appRow.id, note);
+    }
+    for (const rem of item.reminders ?? []) {
+      await createReminder(sql, appRow.id, rem.dueDate, rem.message);
+    }
+  }
+
+  return c.json({ inserted: ids }, 201);
+});
+
+// ── Notes ─────────────────────────────────────────────────────
+
+app.get("/api/applications/:id/notes", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+  const sql = getSql(c.env.DATABASE_URL);
+  return c.json(await listNotes(sql, id));
+});
+
+app.post("/api/applications/:id/notes", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be valid JSON" }, 400);
+  }
+  const parsed = createNoteSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const appRow = await getApplicationById(sql, id);
+  if (!appRow) return c.json({ error: "not found" }, 404);
+
+  const note = await createNote(sql, id, parsed.data.body);
+  return c.json(note, 201);
+});
+
+app.delete("/api/notes/:id", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+  const sql = getSql(c.env.DATABASE_URL);
+  const ok = await deleteNote(sql, id);
+  if (!ok) return c.json({ error: "not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// ── Reminders ─────────────────────────────────────────────────
+
+app.get("/api/applications/:id/reminders", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+  const sql = getSql(c.env.DATABASE_URL);
+  return c.json(await listReminders(sql, id));
+});
+
+app.post("/api/applications/:id/reminders", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be valid JSON" }, 400);
+  }
+  const parsed = createReminderSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const appRow = await getApplicationById(sql, id);
+  if (!appRow) return c.json({ error: "not found" }, 404);
+
+  const rem = await createReminder(sql, id, parsed.data.dueDate, parsed.data.message);
+  return c.json(rem, 201);
+});
+
+app.patch("/api/reminders/:id", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "body must be valid JSON" }, 400);
+  }
+  const completed = (body as { completed?: unknown }).completed;
+  if (typeof completed !== "boolean") {
+    return c.json({ error: "completed boolean required" }, 400);
+  }
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const rem = await setReminderCompleted(sql, id, completed);
+  if (!rem) return c.json({ error: "not found" }, 404);
+  return c.json(rem);
+});
+
+app.delete("/api/reminders/:id", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+  const sql = getSql(c.env.DATABASE_URL);
+  const ok = await deleteReminder(sql, id);
+  if (!ok) return c.json({ error: "not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// ── Documents ─────────────────────────────────────────────────
+
+app.get("/api/documents", async (c) => {
+  const sql = getSql(c.env.DATABASE_URL);
+  const appId = c.req.query("applicationId");
+  if (appId === undefined || appId === "null" || appId === "") {
+    return c.json(await listDocuments(sql, null));
+  }
+  const id = Number(appId);
+  if (!Number.isInteger(id)) return c.json({ error: "applicationId must be an integer" }, 400);
+  return c.json(await listDocuments(sql, id));
+});
+
+app.post("/api/documents", requireApiKey, async (c) => {
+  const form = await c.req.formData();
+  const file = form.get("file");
+  const typeRaw = form.get("type");
+  const appIdRaw = form.get("applicationId");
+
+  if (!file || typeof file === "string" || !("arrayBuffer" in file)) {
+    return c.json({ error: "file required" }, 400);
+  }
+  const upload = file as File;
+  const typeParsed = documentTypeSchema.safeParse(typeRaw);
+  if (!typeParsed.success) {
+    return c.json({ error: "type must be resume or cover_letter" }, 400);
+  }
+
+  let applicationId: number | null = null;
+  if (appIdRaw != null && String(appIdRaw) !== "" && String(appIdRaw) !== "null") {
+    applicationId = Number(appIdRaw);
+    if (!Number.isInteger(applicationId)) {
+      return c.json({ error: "applicationId must be an integer" }, 400);
+    }
+  }
+
+  const storageKey = `docs/${crypto.randomUUID()}-${upload.name}`;
+  await c.env.DOCS.put(storageKey, await upload.arrayBuffer(), {
+    httpMetadata: { contentType: upload.type || "application/octet-stream" },
+  });
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const doc = await createDocument(sql, {
+    type: typeParsed.data,
+    filename: upload.name,
+    storageKey,
+    applicationId,
+  });
+  return c.json(doc, 201);
+});
+
+app.get("/api/documents/:id/url", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const doc = await getDocumentById(sql, id);
+  if (!doc) return c.json({ error: "not found" }, 404);
+
+  const { token, expires } = await createDownloadToken(c.env.API_KEY, id);
+  const url = new URL(c.req.url);
+  return c.json({
+    url: `${url.origin}/api/documents/download?token=${encodeURIComponent(token)}`,
+    expires,
+  });
+});
+
+app.get("/api/documents/download", async (c) => {
+  const token = c.req.query("token");
+  if (!token) return c.json({ error: "token required" }, 400);
+
+  const verified = await verifyDownloadToken(c.env.API_KEY, token);
+  if (!verified) return c.json({ error: "invalid or expired token" }, 401);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const doc = await getDocumentById(sql, verified.documentId);
+  if (!doc) return c.json({ error: "not found" }, 404);
+
+  const obj = await c.env.DOCS.get(doc.storageKey);
+  if (!obj) return c.json({ error: "file missing" }, 404);
+
+  const headers = new Headers();
+  headers.set("Content-Type", obj.httpMetadata?.contentType || "application/octet-stream");
+  headers.set("Content-Disposition", `attachment; filename="${doc.filename.replaceAll('"', "")}"`);
+  return new Response(obj.body, { headers });
+});
+
+app.delete("/api/documents/:id", requireApiKey, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "id must be an integer" }, 400);
+
+  const sql = getSql(c.env.DATABASE_URL);
+  const doc = await deleteDocument(sql, id);
+  if (!doc) return c.json({ error: "not found" }, 404);
+  try {
+    await c.env.DOCS.delete(doc.storageKey);
+  } catch {
+    /* best-effort */
+  }
+  return c.json({ ok: true });
+});
+
+// ── Stats + digest ────────────────────────────────────────────
+
+app.get("/api/stats", async (c) => {
+  const sql = getSql(c.env.DATABASE_URL);
+  return c.json(await getStats(sql));
+});
+
+app.post("/api/digest/run", requireApiKey, async (c) => {
+  const sql = getSql(c.env.DATABASE_URL);
+  const result = await runDigest({
+    sql,
+    resendApiKey: c.env.RESEND_API_KEY,
+    to: c.env.DIGEST_TO,
+    from: c.env.DIGEST_FROM,
+  });
+  return c.json(result);
+});
+
+// SPA fallback for non-API routes is handled by assets binding + not_found_handling
+
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      (async () => {
+        const sql = getSql(env.DATABASE_URL);
+        await runDigest({
+          sql,
+          resendApiKey: env.RESEND_API_KEY,
+          to: env.DIGEST_TO,
+          from: env.DIGEST_FROM,
+        });
+      })()
+    );
+  },
+};

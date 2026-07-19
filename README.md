@@ -1,83 +1,127 @@
-# JobTracker
+# Docket
 
-Live dashboard + write API for the job search Neon database. See `../JobTracker-Scope.md` for the full design writeup.
+Personal single-owner job application tracker — Board, List, Detail, Stats, Settings — served as a React SPA from a Cloudflare Worker (Hono) with Neon Postgres, R2 document storage, and optional Resend digests.
 
-## What's here
+## Stack
 
-Single Cloudflare Worker (Hono) serving both the API (`/api/*`) and the static dashboard (`public/`). Talks to the existing Neon Postgres `applications` / `status_history` tables over HTTP via `@neondatabase/serverless` — no schema changes, same data as the Neon SQL editor workflow.
+- **Frontend:** React + Vite + React Router + Recharts + `@dnd-kit`
+- **API:** Cloudflare Worker (Hono)
+- **DB:** Neon Postgres (`migrations/001_docket_schema.sql`)
+- **Files:** R2 bucket `docket-docs` (binding `DOCS`)
+- **Auth:** No login. Writes require `X-Api-Key`. Reads are open.
 
-Already done and verified locally: `npm install`, `tsc --noEmit` (clean), `wrangler dev` (static assets serve, auth middleware rejects unkeyed writes, validation rejects incomplete jobs). The only thing not verified from this machine is a live query against Neon, since this sandbox's network can't reach it directly — that will work fine once deployed, since Cloudflare's network isn't restricted the way this one is.
+## First-time setup
 
-## First-time setup (run these yourself)
-
-1. **Install dependencies** (from this folder):
-   ```
+1. **Install**
+   ```bash
    npm install
    ```
 
-2. **Log in to Cloudflare** (opens a browser window):
-   ```
+2. **Migrate Neon** — run [`migrations/001_docket_schema.sql`](migrations/001_docket_schema.sql) in the Neon SQL editor. This renames the legacy `applications` table, creates Docket tables, and maps existing rows.
+
+3. **Cloudflare login**
+   ```bash
    npx wrangler login
    ```
 
-3. **Set the two secrets.** `DATABASE_URL` is the same Neon connection string already in use. `API_KEY` should be a new random string, generate one yourself, e.g.:
+4. **Create R2 buckets** (once)
+   ```bash
+   npx wrangler r2 bucket create docket-docs
+   npx wrangler r2 bucket create docket-docs-preview
    ```
-   openssl rand -hex 32
-   ```
-   Then set both:
-   ```
-   npm run secrets:db
-   npm run secrets:key
-   ```
-   Each command prompts you to paste the value, nothing is stored in this repo.
 
-4. **Make sure `humza-butt.space` is on Cloudflare** (DNS proxied through Cloudflare, orange cloud). If it isn't set up yet, either add it first or comment out the `routes` block in `wrangler.toml` for the first deploy and add the custom domain afterwards from the Cloudflare dashboard (Workers & Pages → jobtracker → Settings → Domains & Routes).
-
-5. **Deploy:**
+5. **Secrets**
+   ```bash
+   npm run secrets:db          # DATABASE_URL
+   npm run secrets:key         # API_KEY
+   npm run secrets:resend      # optional RESEND_API_KEY
+   npm run secrets:digest-to   # optional DIGEST_TO
+   npm run secrets:digest-from # optional DIGEST_FROM
    ```
+
+6. **Local secrets** — put the same values in `.dev.vars` (gitignored):
+   ```
+   DATABASE_URL=...
+   API_KEY=dev-local-key-change-me
+   RESEND_API_KEY=
+   DIGEST_TO=
+   DIGEST_FROM=
+   ```
+
+7. **Build & deploy**
+   ```bash
    npm run deploy
    ```
-   This runs `wrangler deploy`, which builds and ships the Worker + static assets in one step, and (once the domain is wired up) makes the site live at `jobtracker.humza-butt.space`.
-
-6. **Smoke test:**
-   ```
-   curl https://jobtracker.humza-butt.space/api/health
-   ```
-   Should return `{"ok":true,"db":"connected"}`. Then load the site in a browser and confirm the table renders.
+   Live at `https://jobtracker.humza-butt.space` (custom domain in `wrangler.toml`).
 
 ## Local development
 
-```
+```bash
 npm run dev
 ```
-Runs the same Worker locally via Miniflare on `http://localhost:8787`, using `.dev.vars` for secrets (already populated with the real `DATABASE_URL` and a placeholder `API_KEY` of `dev-local-key-change-me`, gitignored, never committed).
 
-## Using the API (this is the part that matters for Claude)
+Runs Vite on `http://localhost:5173` (proxies `/api` → Worker) and `wrangler dev` on `http://localhost:8787`.
 
-All write calls need `X-Api-Key: <the API_KEY secret>`.
+Or build the SPA and serve everything from the Worker:
 
-Add one or many applications:
-```
-curl -X POST https://jobtracker.humza-butt.space/api/applications \
-  -H "Content-Type: application/json" \
-  -H "X-Api-Key: <key>" \
-  -d '{"company":"Acme","role":"Software Engineer","platform":"Reed","job_ref":"12345","status":"Applied","date_applied":"2026-07-14 09:00","url":"https://..."}'
-```
-Or post `{"applications": [ {...}, {...} ]}` for a batch. Duplicates (same `platform` + `job_ref`) are silently skipped — safe to re-post the same job twice by accident.
-
-Update a status:
-```
-curl -X PATCH https://jobtracker.humza-butt.space/api/applications/429 \
-  -H "Content-Type: application/json" \
-  -H "X-Api-Key: <key>" \
-  -d '{"status":"Interviewing"}'
+```bash
+npm run build:web
+npx wrangler dev
 ```
 
-Read (no auth needed):
-```
-curl https://jobtracker.humza-butt.space/api/applications
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Vite + Wrangler together |
+| `npm run build:web` | Build React app → `dist/` |
+| `npm run deploy` | Build + `wrangler deploy` |
+| `npm run typecheck` | Worker + web TypeScript |
+
+## API overview
+
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/api/health` | — |
+| GET/POST | `/api/applications` | write: key |
+| GET/PATCH/DELETE | `/api/applications/:id` | write: key |
+| GET/POST | `/api/applications/:id/notes` | write: key |
+| DELETE | `/api/notes/:id` | key |
+| GET/POST | `/api/applications/:id/reminders` | write: key |
+| PATCH/DELETE | `/api/reminders/:id` | key |
+| GET/POST | `/api/documents` | write: key |
+| GET | `/api/documents/:id/url` | key (signed download) |
+| DELETE | `/api/documents/:id` | key |
+| GET | `/api/stats` | — |
+| POST | `/api/import` | key |
+| POST | `/api/digest/run` | key |
+
+Daily cron (`0 8 * * *`) runs the reminder digest when Resend + `DIGEST_TO` are set.
+
+## Import JSON shape
+
+```json
+{
+  "applications": [{
+    "company": "",
+    "roleTitle": "",
+    "industry": "",
+    "status": "wishlist",
+    "location": "",
+    "jobUrl": "",
+    "appliedDate": "YYYY-MM-DD",
+    "salaryRange": "",
+    "source": "",
+    "notes": ["..."],
+    "reminders": [{ "dueDate": "YYYY-MM-DD", "message": "" }]
+  }]
+}
 ```
 
-## Known trade-off
+## Product notes
 
-The dashboard is public but unlisted (no login). The inline status dropdown on the page asks for the API key once via a browser prompt and caches it in `localStorage`, so the key is never shipped in the page source, but anyone who has both the URL and the key can write to the table. Fine for this project's stakes; revisit if that ever changes.
+- Single owner, no multi-user / login / billing
+- Notes are create/delete only (no edit)
+- Reminder fields are not editable after create (toggle complete / delete)
+- App deletes confirm; notes / reminders / docs do not
+- Due soon = incomplete reminder due within 3 days
