@@ -72,7 +72,7 @@ SELECT
   id,
   company,
   role,
-  COALESCE(NULLIF(TRIM(category), ''), 'Unknown'),
+  COALESCE(NULLIF(TRIM(category::text), ''), 'Unknown'),
   location,
   url,
   CASE status
@@ -84,9 +84,10 @@ SELECT
     WHEN 'Skipped' THEN 'rejected'
     ELSE 'wishlist'
   END,
+  -- date_applied is a timestamp in the legacy table (not text)
   CASE
-    WHEN date_applied IS NULL OR TRIM(date_applied) = '' THEN NULL
-    ELSE (LEFT(date_applied, 10))::date
+    WHEN date_applied IS NULL THEN NULL
+    ELSE date_applied::date
   END,
   salary,
   platform,
@@ -106,7 +107,7 @@ SELECT setval(
 INSERT INTO notes (application_id, body, created_at)
 SELECT id, notes, COALESCE(updated_at, created_at, now())
 FROM applications_legacy
-WHERE notes IS NOT NULL AND TRIM(notes) <> '';
+WHERE notes IS NOT NULL AND TRIM(notes::text) <> '';
 
 -- Optional: keep status_history pointing at new applications ids (same ids preserved).
 -- No schema change required if FK was never enforced.

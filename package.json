@@ -11,6 +11,10 @@
     "build:web": "vite build",
     "deploy": "npm run build:web && wrangler deploy",
     "typecheck": "tsc --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:status": "node scripts/db.mjs status",
+    "db:ping": "node scripts/db.mjs ping",
+    "r2:create": "wrangler r2 bucket create docket-docs && wrangler r2 bucket create docket-docs-preview",
     "secrets:db": "wrangler secret put DATABASE_URL",
     "secrets:key": "wrangler secret put API_KEY",
     "secrets:resend": "wrangler secret put RESEND_API_KEY",
@@ -37,6 +41,7 @@
     "concurrently": "^10.0.3",
     "typescript": "^5.7.2",
     "vite": "^8.1.5",
-    "wrangler": "^3.99.0"
+    "wrangler": "^3.99.0",
+    "ws": "^8.21.1"
   }
 }

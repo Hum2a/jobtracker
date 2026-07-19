@@ -17,35 +17,48 @@ Personal single-owner job application tracker — Board, List, Detail, Stats, Se
    npm install
    ```
 
-2. **Migrate Neon** — run [`migrations/001_docket_schema.sql`](migrations/001_docket_schema.sql) in the Neon SQL editor. This renames the legacy `applications` table, creates Docket tables, and maps existing rows.
-
-3. **Cloudflare login**
-   ```bash
-   npx wrangler login
-   ```
-
-4. **Create R2 buckets** (once)
-   ```bash
-   npx wrangler r2 bucket create docket-docs
-   npx wrangler r2 bucket create docket-docs-preview
-   ```
-
-5. **Secrets**
-   ```bash
-   npm run secrets:db          # DATABASE_URL
-   npm run secrets:key         # API_KEY
-   npm run secrets:resend      # optional RESEND_API_KEY
-   npm run secrets:digest-to   # optional DIGEST_TO
-   npm run secrets:digest-from # optional DIGEST_FROM
-   ```
-
-6. **Local secrets** — put the same values in `.dev.vars` (gitignored):
+2. **Local secrets** — create `.dev.vars` (gitignored):
    ```
    DATABASE_URL=...
    API_KEY=dev-local-key-change-me
    RESEND_API_KEY=
    DIGEST_TO=
    DIGEST_FROM=
+   ```
+
+3. **Migrate Neon** (reads `DATABASE_URL` from `.dev.vars`):
+   ```bash
+   npm run db:ping      # connectivity check
+   npm run db:status    # pending vs applied
+   npm run db:migrate   # apply migrations/*.sql
+   ```
+   This renames the legacy `applications` table, creates Docket tables, and maps existing rows. Already applied manually? Mark it so migrate skips it:
+   ```sql
+   CREATE TABLE IF NOT EXISTS schema_migrations (
+     id TEXT PRIMARY KEY,
+     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+   );
+   INSERT INTO schema_migrations (id) VALUES ('001_docket_schema.sql')
+   ON CONFLICT DO NOTHING;
+   ```
+
+4. **Cloudflare login**
+   ```bash
+   npx wrangler login
+   ```
+
+5. **Create R2 buckets** (once)
+   ```bash
+   npm run r2:create
+   ```
+
+6. **Production secrets**
+   ```bash
+   npm run secrets:db          # DATABASE_URL
+   npm run secrets:key         # API_KEY
+   npm run secrets:resend      # optional RESEND_API_KEY
+   npm run secrets:digest-to   # optional DIGEST_TO
+   npm run secrets:digest-from # optional DIGEST_FROM
    ```
 
 7. **Build & deploy**
@@ -77,6 +90,10 @@ npx wrangler dev
 | `npm run build:web` | Build React app → `dist/` |
 | `npm run deploy` | Build + `wrangler deploy` |
 | `npm run typecheck` | Worker + web TypeScript |
+| `npm run db:migrate` | Apply pending `migrations/*.sql` |
+| `npm run db:status` | Show applied vs pending migrations |
+| `npm run db:ping` | Test DB connectivity |
+| `npm run r2:create` | Create R2 buckets for docs |
 
 ## API overview
 
