@@ -47,6 +47,17 @@ type AppContext = { Bindings: Env };
 
 const app = new Hono<AppContext>();
 
+function background(c: Context<AppContext>, task: Promise<unknown>) {
+  const safe = task.catch((err) => {
+    console.error("background task failed", err);
+  });
+  try {
+    c.executionCtx.waitUntil(safe);
+  } catch {
+    void safe;
+  }
+}
+
 app.use("/api/*", cors());
 
 async function requireApiKey(c: Context<AppContext>, next: Next) {
@@ -128,7 +139,7 @@ app.post("/api/applications", requireApiKey, async (c) => {
 
   const sql = getSql(c.env.DATABASE_URL);
   const created = await createApplication(sql, parsed.data);
-  c.executionCtx.waitUntil(notifyApplicationCreated(c.env, sql, created));
+  background(c, notifyApplicationCreated(c.env, sql, created));
   return c.json(created, 201);
 });
 
@@ -156,7 +167,8 @@ app.patch("/api/applications/:id", requireApiKey, async (c) => {
   if (!updated) return c.json({ error: "not found" }, 404);
 
   if (parsed.data.status && parsed.data.status !== existing.status) {
-    c.executionCtx.waitUntil(
+    background(
+      c,
       notifyStatusChanged(c.env, sql, { app: updated, previousStatus: existing.status })
     );
   }

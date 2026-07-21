@@ -18,12 +18,34 @@ type AppRow = {
   location: string | null;
   job_url: string | null;
   status: Status;
-  applied_date: string | null;
+  applied_date: string | Date | null;
   salary_range: string | null;
   source: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Normalize DB date/timestamp values to YYYY-MM-DD (never "Mon Jul 20"). */
+function toDateOnly(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const parsed = new Date(String(value));
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
 
 function mapApp(row: AppRow, dueSoon = false): Application {
   return {
@@ -34,7 +56,7 @@ function mapApp(row: AppRow, dueSoon = false): Application {
     location: row.location,
     jobUrl: row.job_url,
     status: row.status,
-    appliedDate: row.applied_date ? String(row.applied_date).slice(0, 10) : null,
+    appliedDate: toDateOnly(row.applied_date),
     salaryRange: row.salary_range,
     source: row.source,
     createdAt: row.created_at,
@@ -60,13 +82,13 @@ function mapNote(row: {
 function mapReminder(row: {
   id: number;
   application_id: number;
-  due_date: string;
+  due_date: string | Date;
   message: string;
   completed: boolean;
   created_at: string;
   updated_at: string;
 }): Reminder {
-  const dueDate = String(row.due_date).slice(0, 10);
+  const dueDate = toDateOnly(row.due_date) ?? String(row.due_date).slice(0, 10);
   return {
     id: row.id,
     applicationId: row.application_id,
@@ -163,7 +185,9 @@ export async function updateApplication(
     location: updates.location !== undefined ? updates.location : existing.location,
     jobUrl: updates.jobUrl !== undefined ? updates.jobUrl : existing.jobUrl,
     status: updates.status ?? existing.status,
-    appliedDate: updates.appliedDate !== undefined ? updates.appliedDate : existing.appliedDate,
+    appliedDate: toDateOnly(
+      updates.appliedDate !== undefined ? updates.appliedDate : existing.appliedDate
+    ),
     salaryRange: updates.salaryRange !== undefined ? updates.salaryRange : existing.salaryRange,
     source: updates.source !== undefined ? updates.source : existing.source,
   };
