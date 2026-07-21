@@ -123,8 +123,8 @@ export function ListPage() {
     }
   }
 
-  const th = (key: SortKey, label: string) => (
-    <th onClick={() => toggleSort(key)}>
+  const th = (key: SortKey, label: string, className = "") => (
+    <th className={className} onClick={() => toggleSort(key)}>
       {label}
       {sortKey === key ? (sortDir === 1 ? " ↑" : " ↓") : ""}
     </th>
@@ -179,16 +179,16 @@ export function ListPage() {
         <table className="data">
           <thead>
             <tr>
-              {th("company", "Company")}
-              {th("roleTitle", "Position")}
+              {th("company", "Company", "col-company")}
+              {th("roleTitle", "Position", "col-role")}
               {th("industry", "Industry")}
-              {th("status", "Status")}
-              {th("salaryRange", "Salary")}
+              {th("status", "Status", "col-status")}
+              {th("salaryRange", "Salary", "col-salary")}
               {th("location", "Location")}
-              {th("source", "Source")}
-              {th("appliedDate", "Applied")}
-              {th("updatedAt", "Updated")}
-              <th>Actions</th>
+              {th("source", "Source", "col-source")}
+              {th("appliedDate", "Applied", "col-date")}
+              {th("updatedAt", "Updated", "col-updated")}
+              <th className="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -201,32 +201,42 @@ export function ListPage() {
             ) : (
               filtered.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.company}</td>
-                  <td>{r.roleTitle}</td>
-                  <td>{r.industry}</td>
-                  <td>
+                  <td className="col-company" title={r.company}>
+                    {r.company}
+                  </td>
+                  <td className="col-role" title={r.roleTitle}>
+                    {r.roleTitle}
+                  </td>
+                  <td title={r.industry}>{r.industry}</td>
+                  <td className="col-status">
                     <StatusSelect
                       value={r.status}
                       disabled={statusBusyId === r.id}
                       onChange={(next) => onStatusChange(r.id, next)}
                     />
                   </td>
-                  <td>{r.salaryRange ?? ""}</td>
-                  <td>{r.location ?? ""}</td>
-                  <td>{r.source ?? ""}</td>
-                  <td>{r.appliedDate ?? ""}</td>
-                  <td>{r.updatedAt?.slice(0, 10)}</td>
-                  <td>
-                    <Link to={`/apps/${r.id}`}>Edit</Link>{" "}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ padding: "0.15rem 0.4rem", fontSize: "0.8rem" }}
-                      disabled={deleting === r.id}
-                      onClick={() => onDelete(r.id)}
-                    >
-                      {deleting === r.id ? "…" : "Delete"}
-                    </button>
+                  <td className="col-salary" title={r.salaryRange ?? ""}>
+                    {r.salaryRange ?? ""}
+                  </td>
+                  <td title={r.location ?? ""}>{r.location ?? ""}</td>
+                  <td className="col-source" title={r.source ?? ""}>
+                    {r.source ?? ""}
+                  </td>
+                  <td className="col-date">{r.appliedDate ?? ""}</td>
+                  <td className="col-date col-updated">{r.updatedAt?.slice(0, 10)}</td>
+                  <td className="col-actions">
+                    <span className="actions-cell">
+                      <Link to={`/apps/${r.id}`}>Edit</Link>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ padding: "0.1rem 0.35rem", fontSize: "0.75rem" }}
+                        disabled={deleting === r.id}
+                        onClick={() => onDelete(r.id)}
+                      >
+                        {deleting === r.id ? "…" : "Del"}
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))

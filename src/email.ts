@@ -2,6 +2,7 @@ export type SendResult = { sent: boolean; reason?: string };
 
 /** Verified domain sender for Docket. */
 export const DEFAULT_FROM = "Docket <Docket@Humza-Butt.space>";
+export const DEFAULT_REPLY_TO = "Docket@Humza-Butt.space";
 
 export function escapeHtml(str: string): string {
   return str
@@ -28,8 +29,11 @@ export async function sendResendEmail(opts: {
   apiKey?: string;
   to?: string | string[];
   from?: string;
+  replyTo?: string;
   subject: string;
   html: string;
+  text?: string;
+  headers?: Record<string, string>;
 }): Promise<SendResult> {
   if (!opts.apiKey) {
     return { sent: false, reason: "RESEND_API_KEY not configured" };
@@ -43,18 +47,26 @@ export async function sendResendEmail(opts: {
     return { sent: false, reason: "No notify recipients configured (set in Settings)" };
   }
 
+  const payload: Record<string, unknown> = {
+    from: opts.from || DEFAULT_FROM,
+    to: recipients,
+    subject: opts.subject,
+    html: opts.html,
+    reply_to: opts.replyTo || DEFAULT_REPLY_TO,
+  };
+
+  if (opts.text?.trim()) payload.text = opts.text;
+  if (opts.headers && Object.keys(opts.headers).length > 0) {
+    payload.headers = opts.headers;
+  }
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from: opts.from || DEFAULT_FROM,
-      to: recipients,
-      subject: opts.subject,
-      html: opts.html,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {

@@ -398,15 +398,16 @@ textarea {
 table.data {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  table-layout: auto;
 }
 
 table.data th,
 table.data td {
   text-align: left;
-  padding: 0.65rem 0.7rem;
+  padding: 0.4rem 0.45rem;
   border-bottom: 1px solid var(--line);
-  white-space: nowrap;
+  vertical-align: middle;
 }
 
 table.data th {
@@ -414,10 +415,72 @@ table.data th {
   font-weight: 600;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+  font-size: 0.75rem;
 }
 
 table.data th:hover {
   color: var(--ink);
+}
+
+table.data td {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+table.data td.col-company,
+table.data td.col-role {
+  max-width: 12rem;
+  font-weight: 500;
+}
+
+table.data td.col-status {
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+table.data td.col-actions {
+  max-width: none;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+table.data td.col-date {
+  max-width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+table.data .actions-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Compact list status control */
+table.data .status-select {
+  padding: 0.15rem 1.35rem 0.15rem 0.4rem;
+  font-size: 0.72rem;
+  max-width: 7.5rem;
+}
+
+@media (max-width: 1100px) {
+  table.data .col-source,
+  table.data th.col-source {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  table.data .col-updated,
+  table.data th.col-updated,
+  table.data .col-salary,
+  table.data th.col-salary {
+    display: none;
+  }
 }
 
 .status-chip {
